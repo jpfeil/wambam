@@ -9,7 +9,10 @@ import shutil
 import sys
 
 
-def run(cmd):
+def run(cmd, debug=True):
+    if debug:
+        print(" ".join(cmd))
+
     try:
         subprocess.check_call(cmd)
 
@@ -49,14 +52,14 @@ def get_single_reads(prefix, index, reads, path, CPU):
               "-jar", "/opt/pipeline/bin/picard.jar",
               "SamToFastq",
               "VALIDATION_STRINGENCY=LENIENT",
-              "I=%s" % os.path.join(path, "mapped.bam"),
+              "I=%s" % os.path.join(path, "mapped.sorted.bam"),
               "FASTQ=%s.fastq" % prefix]
 
     run(bwt)
     run(mapped)
-    run(picard)
     run(sort)
     run(pile)
+    run(picard)
 
 
 def get_paired_reads(prefix, index, r1, r2, path, CPU):
@@ -128,6 +131,7 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
               "SECOND_END_FASTQ=%s-R2.fastq" % prefix]
 
     run(picard)
+
 
 def single_trim(reads, adapter, path, CPU):
     trimmed = os.path.join(path, "trimmed.fq")
@@ -208,6 +212,9 @@ def main():
                         type=str,
                         required=False)
 
+    parser.add_argument('--save',
+                        action="store_true")
+
     args = parser.parse_args()
 
     dir = tempfile.gettempdir()
@@ -245,12 +252,16 @@ def main():
                             args.CPU)
 
         get_single_reads(args.prefix,
-                  args.index,
-                  reads,
-                  path,
-                  args.CPU)
+                         args.index,
+                         reads,
+                         path,
+                         args.CPU)
 
-    shutil.rmtree(path)
+    if args.save:
+        print("TEMP FILES: \n%s" % path)
+    else:
+        shutil.rmtree(path)
+
 
 if __name__ == "__main__":
     main()
