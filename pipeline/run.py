@@ -9,10 +9,7 @@ import shutil
 import sys
 
 
-def run(cmd, debug=True):
-    if debug:
-        print(" ".join(cmd))
-
+def run(cmd):
     try:
         subprocess.check_call(cmd)
 
@@ -97,6 +94,7 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
              "merge",
              "-c",
              "-p",
+             "-h",
              os.path.join(path, "merged.bam"),
              os.path.join(path, "thisEndMapped.bam"),
              os.path.join(path, "thatEndMapped.bam"),
