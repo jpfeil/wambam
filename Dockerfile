@@ -15,6 +15,9 @@ RUN conda update -y conda && conda install -y -c bioconda samtools bowtie2
 
 WORKDIR /opt
 
+# Add Trimmomatic
+COPY Trimmomatic-0.39 /opt/trim
+
 # Add wrapper scripts
 COPY pipeline /opt/pipeline
 

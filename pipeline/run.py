@@ -1,87 +1,175 @@
 #!/usr/bin/env python3
 
 import argparse
-import subprocess
 import os
+import subprocess
+import uuid
+import tempfile
+import shutil
 
-def get_reads(prefix, index, r1, CPU, r2=None):
+def get_reads(prefix, index, reads, path, CPU):
     bwt = ["bowtie2",
-           "-p", str(CPU),
-           "-x", index]
+           "-p", CPU,
+           "-x", index,
+           '-S', os.path.join(path, 'wambam.sam'),
+           '-U', reads]
 
-    if r2 is None:
-        bwt.extend(["-U", r1])
+    mapped = ["samtools",
+              "view",
+               "-b",
+               "-F", "4",
+               "-o", os.path.join(path, "mapped.bam"),
+               os.path.join(path, "wambam.sam")]
 
-    else:
-        bwt.extend(["-1", r1, "-2", r2])
+    sort = ["samtools",
+            "sort",
+            "-@", CPU,
+            "-o", os.path.join(path, "mapped.sorted.bam"),
+            os.path.join(path, "mapped.bam")]
+
+    pile = ["samtools",
+            "mpileup",
+            "-a",
+            "-o", "%s-pileup" % prefix,
+            os.path.join(path, "mapped.sorted.bam")]
+
+    picard = ["java",
+              "-jar", "/opt/pipeline/bin/picard.jar",
+              "SamToFastq",
+              "VALIDATION_STRINGENCY=LENIENT",
+              "I=%s" % os.path.join(path, "mapped.bam"),
+              "FASTQ=%s.fastq" % prefix]
+
+    subprocess.check_call(bwt)
+    subprocess.check_call(mapped)
+    subprocess.check_call(picard)
+    subprocess.check_call(sort)
+    subprocess.check_call(pile)
+    shutil.rmtree(path)
+
+
+def get_paired_reads(prefix, index, r1, r2, path, CPU):
+    bwt = ["bowtie2",
+           "-p", CPU,
+           "-x", index,
+           '-S', os.path.join(path, 'wambam.sam'),
+           "-1", r1,
+           "-2", r2]
 
     this = ["samtools",
             "view",
             "-b",
             "-F", "4",
             "-f", "8",
-            "-",
-            "-o", ".thisEndMapped.bam"]
+            "-o", os.path.join(path, "thisEndMapped.bam"),
+            os.path.join(path, "wambam.sam")]
 
     that = ["samtools",
             "view",
             "-b",
             "-F", "8",
             "-f", "4",
-            "-",
-            "-o", ".thatEndMapped.bam"]
+            "-o", os.path.join(path, "thatEndMapped.bam"),
+            os.path.join(path, "wambam.sam")]
 
     both = ["samtools",
             "view",
             "-b",
             "-F", "12",
-            "-",
-            "-o", ".bothEndsMapped.bam"]
+            "-o", os.path.join(path, "bothEndsMapped.bam"),
+            os.path.join(path, "wambam.sam")]
 
     merge = ["samtools",
              "merge",
-             "-1",
              "-c",
-             "-p", ".merged.bam",
-             ".thisEndmapped.bam",
-             ".thatEndmapped.bam",
-             ".bothEndsmapped.bam"]
+             "-p",
+             os.path.join(path, "merged.bam"),
+             os.path.join(path, "thisEndMapped.bam"),
+             os.path.join(path, "thatEndMapped.bam"),
+             os.path.join(path, "bothEndsMapped.bam")]
 
-    print(bwt)
-    p1 = subprocess.Popen(bwt,
-                          stdout=subprocess.PIPE)
-    p1.communicate()
+    sort = ["samtools",
+            "sort",
+            "-@", CPU,
+            "-o", os.path.join(path, "merged.sorted.bam"),
+            os.path.join(path, "merged.bam")]
 
-    print(this)
-    subprocess.Popen(this, stdin=p1.stdout).wait()
-    subprocess.Popen(that, stdin=p1.stdout).wait()
-    subprocess.Popen(both, stdin=p1.stdout).wait()
+    pile = ["samtools",
+            "mpileup",
+            "-a",
+            "-o", "%s-pileup" % prefix,
+            os.path.join(path, "merged.sorted.bam")]
 
+    subprocess.check_call(bwt)
+    subprocess.check_call(this)
+    subprocess.check_call(that)
+    subprocess.check_call(both)
     subprocess.check_call(merge)
-
-    os.remove(".thisEndmapped.bam")
-    os.remove(".thatEndmapped.bam")
-    os.remove(".bothEndsmapped.bam")
+    subprocess.check_call(sort)
+    subprocess.check_call(pile)
 
     picard = ["java",
               "-jar", "/opt/pipeline/bin/picard.jar",
               "SamToFastq",
               "VALIDATION_STRINGENCY=LENIENT",
-              "I=.merged.bam",
-              "FASTQ=%s-R1.fastq" % prefix]
-
-    if r2 is not None:
-        picard.append("SECOND_END_FASTQ=%s-R2.fastq" % prefix)
+              "I=%s" % os.path.join(path, "merged.bam"),
+              "FASTQ=%s-R1.fastq" % prefix,
+              "SECOND_END_FASTQ=%s-R2.fastq" % prefix]
 
     subprocess.check_call(picard)
 
+def single_trim(reads, adapter, path, CPU):
+    trimmed = os.path.join(path, "trimmed.fq")
+    trim = ["java", "-jar",
+            "/opt/trim/trimmomatic-0.39.jar",
+            "SE",
+            "-threads", CPU,
+            "-phred33",
+            reads,
+            trimmed,
+            "ILLUMINACLIP:/opt/trim/adapters/%s.fa:2:30:10" % adapter,
+            "SLIDINGWINDOW:4:5",
+            "LEADING:5",
+            "TRAILING:5",
+            "MINLEN:25"]
+    subprocess.check_call(trim)
+    return trimmed
+
+
+def paired_trim(r1, r2, adapter, path, CPU):
+    p1 = os.path.join(path, "forward_paired.fq"),
+    p2 = os.path.join(path, "reverse_paired.fq"),
+    trim = ["java", "-jar",
+            "/opt/trim/trimmomatic-0.39.jar",
+            "PE",
+            "-threads", CPU,
+            "-phred33",
+            r1, r2, p1,
+            os.path.join(path, "forward_unpaired.fq"),
+            p2,
+            os.path.join(path, "reverse_unpaired.fq"),
+            "ILLUMINACLIP:/opt/trim/adapters/%s.fa:2:30:10" % adapter,
+            "SLIDINGWINDOW:4:5",
+            "LEADING:5",
+            "TRAILING:5",
+            "MINLEN:25"]
+    subprocess.check_call(trim)
+    return p1, p2
+
 
 def main():
+    """
+    Takes a bowtie2 inERR2598317-L1HS.fastqdex and removes reads that map.
+    """
     parser = argparse.ArgumentParser(description=main.__doc__)
 
     parser.add_argument("--index",
                         required=True,
                         help="Path to bowtie2 index")
+
+    parser.add_argument("--faidx",
+                        required=False,
+                        help="Path to reference index")
 
     parser.add_argument('--prefix',
                         required=True)
@@ -94,19 +182,63 @@ def main():
                         help='Path to read 2 fastq',
                         required=False)
 
+    parser.add_argument("--adapters",
+                        help="""Trimmomatic adapter types: 
+                        NexteraPE-PE
+                        TruSeq2-PE
+                        TruSeq2-SE
+                        TruSeq3-PE-2
+                        TruSeq3-PE
+                        TruSeq3-SE
+                        """)
+
     parser.add_argument('--CPU',
                         default=1,
                         required=False)
 
     args = parser.parse_args()
 
-    print(args)
+    dir = tempfile.gettempdir()
+    path = os.path.join(dir, str(uuid.uuid4()))
+    os.mkdir(path)
 
-    get_reads(args.prefix,
-              args.index,
-              args.R1,
-              args.CPU,
-              args.R2)
+    if args.R2:
+        if args.adapter is None:
+            adapter = "TruSeq3-PE"
+        else:
+            adapter = args.adapter
+
+        p1, p2 = paired_trim(args.R1,
+                             args.R1,
+                             adapter,
+                             path,
+                             args.CPU)
+
+        get_paired_reads(args.prefix,
+                         args.index,
+                         p1,
+                         p2,
+                         path,
+                         args.CPU)
+
+    else:
+        if args.adapter is None:
+            adapter = "TruSeq3-SE"
+        else:
+            adapter = args.adapter
+
+        reads = single_trim(args.R1,
+                            adapter,
+                            path,
+                            args.CPU)
+
+        get_reads(args.prefix,
+                  args.index,
+                  reads,
+                  path,
+                  args.CPU)
+
+    shutil.rmtree(path)
 
 if __name__ == "__main__":
     main()
