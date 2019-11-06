@@ -123,7 +123,7 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
               "-jar", "/opt/pipeline/bin/picard.jar",
               "SamToFastq",
               "VALIDATION_STRINGENCY=LENIENT",
-              "I=%s" % os.path.join(path, "merged.bam"),
+              "I=%s" % os.path.join(path, "merged.sorted.bam"),
               "FASTQ=%s-R1.fastq" % prefix,
               "SECOND_END_FASTQ=%s-R2.fastq" % prefix]
 
