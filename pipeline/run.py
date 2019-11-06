@@ -6,10 +6,22 @@ import subprocess
 import uuid
 import tempfile
 import shutil
+import sys
 
-def get_reads(prefix, index, reads, path, CPU):
+
+def run(cmd):
+    try:
+        subprocess.check_call(cmd)
+
+    except TypeError:
+        print("ERROR: Shutting down!")
+        print(cmd)
+        sys.exit()
+
+
+def get_single_reads(prefix, index, reads, path, CPU):
     bwt = ["bowtie2",
-           "-p", CPU,
+           "-p", str(CPU),
            "-x", index,
            '-S', os.path.join(path, 'wambam.sam'),
            '-U', reads]
@@ -23,7 +35,7 @@ def get_reads(prefix, index, reads, path, CPU):
 
     sort = ["samtools",
             "sort",
-            "-@", CPU,
+            "-@", str(CPU),
             "-o", os.path.join(path, "mapped.sorted.bam"),
             os.path.join(path, "mapped.bam")]
 
@@ -40,17 +52,16 @@ def get_reads(prefix, index, reads, path, CPU):
               "I=%s" % os.path.join(path, "mapped.bam"),
               "FASTQ=%s.fastq" % prefix]
 
-    subprocess.check_call(bwt)
-    subprocess.check_call(mapped)
-    subprocess.check_call(picard)
-    subprocess.check_call(sort)
-    subprocess.check_call(pile)
-    shutil.rmtree(path)
+    run(bwt)
+    run(mapped)
+    run(picard)
+    run(sort)
+    run(pile)
 
 
 def get_paired_reads(prefix, index, r1, r2, path, CPU):
     bwt = ["bowtie2",
-           "-p", CPU,
+           "-p", str(CPU),
            "-x", index,
            '-S', os.path.join(path, 'wambam.sam'),
            "-1", r1,
@@ -90,7 +101,7 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
 
     sort = ["samtools",
             "sort",
-            "-@", CPU,
+            "-@", str(CPU),
             "-o", os.path.join(path, "merged.sorted.bam"),
             os.path.join(path, "merged.bam")]
 
@@ -100,13 +111,13 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
             "-o", "%s-pileup" % prefix,
             os.path.join(path, "merged.sorted.bam")]
 
-    subprocess.check_call(bwt)
-    subprocess.check_call(this)
-    subprocess.check_call(that)
-    subprocess.check_call(both)
-    subprocess.check_call(merge)
-    subprocess.check_call(sort)
-    subprocess.check_call(pile)
+    run(bwt)
+    run(this)
+    run(that)
+    run(both)
+    run(merge)
+    run(sort)
+    run(pile)
 
     picard = ["java",
               "-jar", "/opt/pipeline/bin/picard.jar",
@@ -116,14 +127,14 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
               "FASTQ=%s-R1.fastq" % prefix,
               "SECOND_END_FASTQ=%s-R2.fastq" % prefix]
 
-    subprocess.check_call(picard)
+    run(picard)
 
 def single_trim(reads, adapter, path, CPU):
     trimmed = os.path.join(path, "trimmed.fq")
     trim = ["java", "-jar",
             "/opt/trim/trimmomatic-0.39.jar",
             "SE",
-            "-threads", CPU,
+            "-threads", str(CPU),
             "-phred33",
             reads,
             trimmed,
@@ -132,17 +143,17 @@ def single_trim(reads, adapter, path, CPU):
             "LEADING:5",
             "TRAILING:5",
             "MINLEN:25"]
-    subprocess.check_call(trim)
+    run(trim)
     return trimmed
 
 
 def paired_trim(r1, r2, adapter, path, CPU):
-    p1 = os.path.join(path, "forward_paired.fq"),
-    p2 = os.path.join(path, "reverse_paired.fq"),
+    p1 = os.path.join(path, "forward_paired.fq")
+    p2 = os.path.join(path, "reverse_paired.fq")
     trim = ["java", "-jar",
             "/opt/trim/trimmomatic-0.39.jar",
             "PE",
-            "-threads", CPU,
+            "-threads", str(CPU),
             "-phred33",
             r1, r2, p1,
             os.path.join(path, "forward_unpaired.fq"),
@@ -153,7 +164,7 @@ def paired_trim(r1, r2, adapter, path, CPU):
             "LEADING:5",
             "TRAILING:5",
             "MINLEN:25"]
-    subprocess.check_call(trim)
+    run(trim)
     return p1, p2
 
 
@@ -182,7 +193,7 @@ def main():
                         help='Path to read 2 fastq',
                         required=False)
 
-    parser.add_argument("--adapters",
+    parser.add_argument("--adapter",
                         help="""Trimmomatic adapter types: 
                         NexteraPE-PE
                         TruSeq2-PE
@@ -194,6 +205,7 @@ def main():
 
     parser.add_argument('--CPU',
                         default=1,
+                        type=str,
                         required=False)
 
     args = parser.parse_args()
@@ -232,7 +244,7 @@ def main():
                             path,
                             args.CPU)
 
-        get_reads(args.prefix,
+        get_single_reads(args.prefix,
                   args.index,
                   reads,
                   path,
