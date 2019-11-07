@@ -28,10 +28,11 @@ def get_single_reads(prefix, index, reads, path, CPU):
 
     mapped = ["samtools",
               "view",
-               "-b",
-               "-F", "4",
-               "-o", os.path.join(path, "mapped.bam"),
-               os.path.join(path, "wambam.sam")]
+              "-h",
+              "-b",
+              "-F", "4",
+              "-o", os.path.join(path, "mapped.bam"),
+              os.path.join(path, "wambam.sam")]
 
     sort = ["samtools",
             "sort",
@@ -90,15 +91,12 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
             "-o", os.path.join(path, "bothEndsMapped.bam"),
             os.path.join(path, "wambam.sam")]
 
-    merge = ["samtools",
+    merge = ["bamtools",
              "merge",
-             "-c",
-             "-p",
-             "-h",
-             os.path.join(path, "merged.bam"),
-             os.path.join(path, "thisEndMapped.bam"),
-             os.path.join(path, "thatEndMapped.bam"),
-             os.path.join(path, "bothEndsMapped.bam")]
+             "-in", os.path.join(path, "thisEndMapped.bam"),
+             "-in", os.path.join(path, "thatEndMapped.bam"),
+             "-in", os.path.join(path, "bothEndsMapped.bam"),
+             "-out", os.path.join(path, "merged.bam")]
 
     sort = ["samtools",
             "sort",
