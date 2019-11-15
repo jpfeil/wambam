@@ -11,6 +11,7 @@ import sys
 
 def run(cmd):
     try:
+        print(" ".join(cmd))
         subprocess.check_call(cmd)
 
     except TypeError:
@@ -42,6 +43,7 @@ def get_single_reads(prefix, index, reads, path, CPU):
 
     pile = ["samtools",
             "mpileup",
+            "-A",
             "-a",
             "-o", "%s-pileup" % prefix,
             os.path.join(path, "mapped.sorted.bam")]
@@ -106,17 +108,10 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
 
     pile = ["samtools",
             "mpileup",
+            '-A',
             "-a",
             "-o", "%s-pileup" % prefix,
             os.path.join(path, "merged.sorted.bam")]
-
-    run(bwt)
-    run(this)
-    run(that)
-    run(both)
-    run(merge)
-    run(sort)
-    run(pile)
 
     picard = ["java",
               "-jar", "/opt/pipeline/bin/picard.jar",
@@ -126,6 +121,13 @@ def get_paired_reads(prefix, index, r1, r2, path, CPU):
               "FASTQ=%s-R1.fastq" % prefix,
               "SECOND_END_FASTQ=%s-R2.fastq" % prefix]
 
+    run(bwt)
+    run(this)
+    run(that)
+    run(both)
+    run(merge)
+    run(sort)
+    run(pile)
     run(picard)
 
 
@@ -175,7 +177,7 @@ def main():
     parser = argparse.ArgumentParser(description=main.__doc__)
 
     parser.add_argument("--index",
-                        required=True,
+                        required=False,
                         help="Path to bowtie2 index")
 
     parser.add_argument("--faidx",
@@ -184,6 +186,10 @@ def main():
 
     parser.add_argument('--prefix',
                         required=True)
+
+    parser.add_argument('--just-trim',
+                        dest="just_trim",
+                        action="store_true")
 
     parser.add_argument('-1', '--R1',
                         help='Path to read 1 fastq',
@@ -229,6 +235,14 @@ def main():
                              path,
                              args.CPU)
 
+        if args.just_trim:
+            r1 = "%s-trim-R1.fastq" % args.prefix
+            shutil.move(p1, r1)
+            r2 = "%s-trim-R2.fastq" % args.prefix
+            shutil.move(p2, r2)
+            sys.exit(0)
+
+
         get_paired_reads(args.prefix,
                          args.index,
                          p1,
@@ -246,6 +260,11 @@ def main():
                             adapter,
                             path,
                             args.CPU)
+
+        if args.just_trim:
+            r = "%s-trim.fastq" % args.prefix
+            shutil.move(reads, r)
+            sys.exit(0)
 
         get_single_reads(args.prefix,
                          args.index,
