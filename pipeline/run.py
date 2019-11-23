@@ -7,6 +7,7 @@ import uuid
 import tempfile
 import shutil
 import sys
+import numpy as np
 
 
 def run(cmd):
@@ -18,6 +19,30 @@ def run(cmd):
         print("ERROR: Shutting down!")
         print(cmd)
         sys.exit()
+
+
+def extract_bam_reads(bam, path):
+    R1 = os.path.join(path, "R1.fastq")
+    R2 = os.path.join(path, "R2.fastq")
+
+    picard = ["java",
+              "-jar", "/opt/pipeline/bin/picard.jar",
+              "SamToFastq",
+              "VALIDATION_STRINGENCY=LENIENT",
+              "I=%s" % bam,
+              "FASTQ=%s" % R1, 
+              "SECOND_END_FASTQ=%s" % R2]
+
+    run(picard)
+
+    R1_size = os.path.getsize(R1)
+    R2_size = os.path.getsize(R2)
+
+    if not np.isclose([R1_size], [R2_size], 0.05)[0]:
+        R2 = None
+
+    return R1, R2
+
 
 
 def get_single_reads(prefix, index, reads, path, CPU):
@@ -172,7 +197,8 @@ def paired_trim(r1, r2, adapter, path, CPU):
 
 def main():
     """
-    Takes a bowtie2 inERR2598317-L1HS.fastqdex and removes reads that map.
+    Extracts reads that align to a given bowtie2 index. Can be used
+    to filter reads that map to a particular region of the genome.
     """
     parser = argparse.ArgumentParser(description=main.__doc__)
 
@@ -191,9 +217,13 @@ def main():
                         dest="just_trim",
                         action="store_true")
 
+    parser.add_argument('-b', '--bam',
+                        help='Path to RNA-seq bam',
+                        required=False)
+
     parser.add_argument('-1', '--R1',
                         help='Path to read 1 fastq',
-                        required=True)
+                        required=False)
 
     parser.add_argument('-2', '--R2',
                         help='Path to read 2 fastq',
@@ -219,9 +249,17 @@ def main():
 
     args = parser.parse_args()
 
-    dir = tempfile.gettempdir()
-    path = os.path.join(dir, str(uuid.uuid4()))
+    _dir = tempfile.gettempdir()
+    path = os.path.join(_dir, str(uuid.uuid4()))
     os.mkdir(path)
+
+    if args.bam:
+        R1, R2 = extract_bam_reads(args.bam, path) 
+        args.R1 = R1
+        args.R2 = R2
+
+    elif args.R1 is None:
+        raise ValueError("Need at least an input bam for fastq file")
 
     if args.R2:
         if args.adapter is None:
@@ -240,6 +278,7 @@ def main():
             shutil.move(p1, r1)
             r2 = "%s-trim-R2.fastq" % args.prefix
             shutil.move(p2, r2)
+            subprocess.check_call(["gzip", r1, r2])
             sys.exit(0)
 
 
@@ -264,6 +303,7 @@ def main():
         if args.just_trim:
             r = "%s-trim.fastq" % args.prefix
             shutil.move(reads, r)
+            subprocess.check_call(["gzip", r])
             sys.exit(0)
 
         get_single_reads(args.prefix,

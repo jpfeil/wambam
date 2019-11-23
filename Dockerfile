@@ -11,7 +11,7 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &
 
 ENV PATH=/root/miniconda/bin:$PATH
 
-RUN conda update -y conda && conda install -y -c bioconda samtools bowtie2 bamtools
+RUN conda update -y conda && conda install -y -c bioconda samtools bowtie2 bamtools numpy
 
 WORKDIR /opt
 
