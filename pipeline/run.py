@@ -88,6 +88,9 @@ def get_single_reads(prefix, index, reads, path, CPU):
 
 
 def get_paired_reads(prefix, index, r1, r2, path, CPU):
+
+    assert r1 != r2, "ERROR: read1 is the same path as read2"
+
     bwt = ["bowtie2",
            "-p", str(CPU),
            "-x", index,
@@ -206,6 +209,10 @@ def main():
                         required=False,
                         help="Path to bowtie2 index")
 
+    parser.add_argument("--ref",
+                        required=False,
+                        help="Path to reference fasta")
+
     parser.add_argument("--faidx",
                         required=False,
                         help="Path to reference index")
@@ -215,6 +222,10 @@ def main():
 
     parser.add_argument('--just-trim',
                         dest="just_trim",
+                        action="store_true")
+
+    parser.add_argument('--skip-trim',
+                        dest="skip_trim",
                         action="store_true")
 
     parser.add_argument('-b', '--bam',
@@ -267,11 +278,15 @@ def main():
         else:
             adapter = args.adapter
 
-        p1, p2 = paired_trim(args.R1,
-                             args.R1,
-                             adapter,
-                             path,
-                             args.CPU)
+        if not args.skip_trim:
+            p1, p2 = paired_trim(args.R1,
+                                 args.R2,
+                                 adapter,
+                                 path,
+                                 args.CPU)
+
+        else:
+            p1, p2 = args.R1, args.R2
 
         if args.just_trim:
             r1 = "%s-trim-R1.fastq" % args.prefix
